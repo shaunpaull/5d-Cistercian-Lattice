@@ -13,26 +13,24 @@
 #include <iomanip>
 #include <chrono>
 
-// Structure to represent a lattice symbol with color, shade, and complexity
+// Structure to represent a lattice symbol with color and complexity
 struct LatticeSymbol {
     unsigned int symbol;            // Unicode symbol
     std::vector<std::string> colors; // Colors for each dimension
-    std::vector<int> shades;        // Shades for each dimension
     std::bitset<256> complexity;    // Complexity key
 };
 
-// Function to create a 5D lattice with colors, shades, and additional complexity
+// Function to create a 5D lattice with colors and additional complexity
 std::vector<std::vector<std::vector<std::vector<std::vector<LatticeSymbol>>>>> createLattice(int width, int height, int depth, int time, int shades) {
     // Create a random number generator
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<unsigned int> distribution(0, 1114111); // Maximum Unicode code point
-    std::uniform_int_distribution<int> shadeDistribution(0, shades - 1);   // Maximum shade value
 
-    // Create the lattice structure with colors, shades, and complexity
+    // Create the lattice structure with colors and complexity
     std::vector<std::vector<std::vector<std::vector<std::vector<LatticeSymbol>>>>> lattice(width, std::vector<std::vector<std::vector<std::vector<LatticeSymbol>>>>(height, std::vector<std::vector<std::vector<LatticeSymbol>>>(depth, std::vector<std::vector<LatticeSymbol>>(time, std::vector<LatticeSymbol>(shades)))));
 
-    // Fill the lattice with random Unicode symbols, colors, shades, and complexity
+    // Fill the lattice with random Unicode symbols, colors, and complexity
     for (int i = 0; i < width; i++) {
         for (int j = 0; j < height; j++) {
             for (int k = 0; k < depth; k++) {
@@ -44,10 +42,6 @@ std::vector<std::vector<std::vector<std::vector<std::vector<LatticeSymbol>>>>> c
                         for (int c = 0; c < numColors; c++) {
                             colors[c] = "Color" + std::to_string(c + 1);
                         }
-                        std::vector<int> shade(numColors);
-                        for (int c = 0; c < numColors; c++) {
-                            shade[c] = shadeDistribution(gen);
-                        }
                         std::bitset<256> complexity;
                         for (int b = 0; b < 256; b++) {
                             complexity[b] = gen() % 2; // Generate a random bit for each position in the 256-bit key
@@ -56,7 +50,6 @@ std::vector<std::vector<std::vector<std::vector<std::vector<LatticeSymbol>>>>> c
                         LatticeSymbol latticeSymbol;
                         latticeSymbol.symbol = symbol;
                         latticeSymbol.colors = colors;
-                        latticeSymbol.shades = shade;
                         latticeSymbol.complexity = complexity;
 
                         lattice[i][j][k][l][s] = latticeSymbol;
@@ -105,20 +98,20 @@ std::string encryptMessage(const std::string& message, const std::vector<std::ve
             }
         }
 
-        std::vector<unsigned long long> keys(4);
+        std::vector<unsigned long> keys(4);
         for (int j = 0; j < 4; j++) {
             std::bitset<64> subKey;
             for (int b = 0; b < 64; b++) {
                 subKey[b] = keyBits[b + (j * 64)];
             }
-            keys[j] = subKey.to_ullong();
+            keys[j] = subKey.to_ulong();
         }
 
         unsigned char encryptedChar = c ^ (key[0] & 0xFF) ^
-                                      (keys[0] & 0xFFFFFFFF) & 0xFF ^
-                                      (keys[1] & 0xFFFFFFFF) & 0xFF ^
-                                      (keys[2] & 0xFFFFFFFF) & 0xFF ^
-                                      (keys[3] & 0xFFFFFFFF) & 0xFF ^
+                                      (keys[0] & 0xFFFF) & 0xFF ^
+                                      (keys[1] & 0xFFFF) & 0xFF ^
+                                      (keys[2] & 0xFFFF) & 0xFF ^
+                                      (keys[3] & 0xFFFF) & 0xFF ^
                                       (maxSymbol & 0xFF);
 
         encryptedData.push_back(encryptedChar);
@@ -134,22 +127,94 @@ std::string encryptMessage(const std::string& message, const std::vector<std::ve
     return ss.str();
 }
 
+// Function to decrypt a message using the same 5D Cistercian lattice and custom decryption
+std::string decryptMessage(const std::string& encryptedMessage, const std::vector<std::vector<std::vector<std::vector<std::vector<LatticeSymbol>>>>>& lattice, const std::string& encryptionKey, int numRounds) {
+    std::vector<unsigned char> encryptedData;
+    std::istringstream iss(encryptedMessage);
+    unsigned int value;
+
+    while (iss >> std::hex >> value) {
+        encryptedData.push_back(static_cast<unsigned char>(value));
+    }
+
+    std::vector<unsigned char> decryptedData;
+    std::vector<unsigned char> key(encryptionKey.begin(), encryptionKey.end());
+
+    for (unsigned char c : encryptedData) {
+        unsigned int index1 = c % lattice.size();
+        unsigned int index2 = c / lattice.size() % lattice[0].size();
+        unsigned int index3 = c / (lattice.size() * lattice[0].size()) % lattice[0][0].size();
+        unsigned int index4 = c / (lattice.size() * lattice[0].size() * lattice[0][0].size()) % lattice[0][0][0].size();
+        unsigned int index5 = c / (lattice.size() * lattice[0].size() * lattice[0][0].size() * lattice[0][0][0].size()) % lattice[0][0][0][0].size();
+
+        const LatticeSymbol& latticeSymbol = lattice[index1][index2][index3][index4][index5];
+        std::bitset<256> keyBits = latticeSymbol.complexity;
+
+        // Find the most efficient Unicode symbol with the highest complexity
+        unsigned int maxSymbol = latticeSymbol.symbol;
+        unsigned int maxComplexity = keyBits.count();
+        for (int i = 0; i < lattice.size(); i++) {
+            for (int j = 0; j < lattice[0].size(); j++) {
+                for (int k = 0; k < lattice[0][0].size(); k++) {
+                    for (int l = 0; l < lattice[0][0][0].size(); l++) {
+                        for (int s = 0; s < lattice[0][0][0][0].size(); s++) {
+                            const LatticeSymbol& symbol = lattice[i][j][k][l][s];
+                            std::bitset<256> symbolComplexity = symbol.complexity;
+                            unsigned int complexity = symbolComplexity.count();
+                            if (complexity > maxComplexity) {
+                                maxSymbol = symbol.symbol;
+                                maxComplexity = complexity;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        std::vector<unsigned long> keys(4);
+        for (int j = 0; j < 4; j++) {
+            std::bitset<64> subKey;
+            for (int b = 0; b < 64; b++) {
+                subKey[b] = keyBits[b + (j * 64)];
+            }
+            keys[j] = subKey.to_ulong();
+        }
+
+        unsigned char decryptedChar = c ^ (key[0] & 0xFF) ^
+                                      (keys[0] & 0xFFFF) & 0xFF ^
+                                      (keys[1] & 0xFFFF) & 0xFF ^
+                                      (keys[2] & 0xFFFF) & 0xFF ^
+                                      (keys[3] & 0xFFFF) & 0xFF ^
+                                      (maxSymbol & 0xFF);
+
+        decryptedData.push_back(decryptedChar);
+    }
+
+    return std::string(decryptedData.begin(), decryptedData.end());
+}
+
 int main() {
     // Create a 5D Cistercian lattice
     int width = 10;
     int height = 10;
     int depth = 10;
     int time = 10;
-    int shades = 5;
+    int shades = 10;
     std::vector<std::vector<std::vector<std::vector<std::vector<LatticeSymbol>>>>> lattice = createLattice(width, height, depth, time, shades);
 
     // Encrypt a message
     std::string message = "Hello, world!";
     std::string encryptionKey = "SecretKey";
-    int numRounds = 10;
+    int numRounds = 5;
     std::string encryptedMessage = encryptMessage(message, lattice, encryptionKey, numRounds);
 
+    // Decrypt the message
+    std::string decryptedMessage = decryptMessage(encryptedMessage, lattice, encryptionKey, numRounds);
+
+    // Print the results
+    std::cout << "Original message: " << message << std::endl;
     std::cout << "Encrypted message: " << encryptedMessage << std::endl;
+    std::cout << "Decrypted message: " << decryptedMessage << std::endl;
 
     return 0;
 }
